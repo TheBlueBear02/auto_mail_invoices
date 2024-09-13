@@ -46,8 +46,6 @@ else:
     # If config.json doesn't exist, prompt the user to select a folder
     invoices_folder = choose_folder()
 
-print(f"Invoices folder: {invoices_folder}")
-
 
 gmail = Gmail() # will open a browser window to ask you to log in and authenticate for the first time
 
