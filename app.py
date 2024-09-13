@@ -3,21 +3,33 @@ from simplegmail.query import construct_query
 import re
 from weasyprint import HTML
 import os
+import sys
 
+# Determine the base path
+if getattr(sys, 'frozen', False):
+    # Running as a PyInstaller bundle
+    base_path = sys._MEIPASS
+else:
+    # Running as a normal Python script
+    base_path = os.path.dirname(os.path.abspath(__file__))
+    
+print(base_path)
+# Path to the invoices folder
+invoices_folder = os.path.join(base_path, 'invoices')
 
 gmail = Gmail() # will open a browser window to ask you to log in and authenticate for the first time
-save_directory = r'D:\Projects\emailAPI\invoices' # the saved invoices directory
+invoices_folder = r'D:\Projects\auto_mail_invoices\invoices' # the saved invoices directory
 
 query_params = { # select the list of email you want to get from the Gmail inbox
-    "newer_than": (2, "day"),
+    "newer_than": (7, "day"),
     #"unread": False,
 }
 
 messages = gmail.get_messages(query=construct_query(query_params)) # run the query and get list of emails
 
 for message in messages:
-    safe_filename = re.sub(r'[<>:"/\\|?*]', '_', message.subject) # change the file name to a safe name so you cna save it on your pc
-    file_path = save_directory + '\\' + safe_filename + '.pdf' # set the new pdf name
+    safe_filename = re.sub(r'[<>:"/\\|?*]', '_', message.subject + message.date) # change the file name to a safe name so you cna save it on your pc
+    file_path = invoices_folder + '\\' + safe_filename + '.pdf' # set the new pdf name
     if os.path.exists(file_path): # checks if the pdf name already exists in the directory, if not continue
         print('All invoices are saved!')
         break
