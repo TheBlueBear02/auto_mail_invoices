@@ -4,6 +4,24 @@ import re
 from weasyprint import HTML
 import os
 import sys
+import tkinter as tk
+from tkinter import filedialog
+import json
+
+# Function to select a folder and save its path to the config.json file
+def choose_folder():
+    root = tk.Tk()
+    root.withdraw()  # Hide the main window
+    selected_folder = filedialog.askdirectory(title="Select Folder to Save Invoices")  # Prompt user to select a folder
+    if selected_folder:
+        # Save the selected folder path to the config.json file
+        with open(config_file_path, 'w') as config_file:
+            json.dump({"invoices_folder": selected_folder}, config_file)
+        print(f"Selected folder: {selected_folder}")
+        return selected_folder
+    else:
+        print("No folder selected.")
+        sys.exit()
 
 # Determine the base path
 if getattr(sys, 'frozen', False):
@@ -12,22 +30,35 @@ if getattr(sys, 'frozen', False):
 else:
     # Running as a normal Python script
     base_path = os.path.dirname(os.path.abspath(__file__))
-    
-print(base_path)
-# Path to the invoices folder
-invoices_folder = os.path.join(base_path, 'invoices')
+
+
+# Path to the JSON file where folder path will be saved
+config_file_path = os.path.join(os.path.expanduser("~"), 'config.json')
+
+# Load the folder path from config.json file if it exists
+if os.path.exists(config_file_path):
+    with open(config_file_path, 'r') as config_file:
+        config_data = json.load(config_file)
+        invoices_folder = config_data.get("invoices_folder", None)
+        if not invoices_folder or not os.path.exists(invoices_folder):
+            invoices_folder = choose_folder()
+else:
+    # If config.json doesn't exist, prompt the user to select a folder
+    invoices_folder = choose_folder()
+
+print(f"Invoices folder: {invoices_folder}")
+
 
 gmail = Gmail() # will open a browser window to ask you to log in and authenticate for the first time
-invoices_folder = r'D:\Projects\auto_mail_invoices\invoices' # the saved invoices directory
 
 query_params = { # select the list of email you want to get from the Gmail inbox
     "newer_than": (7, "day"),
     #"unread": False,
 }
 
-messages = gmail.get_messages(query=construct_query(query_params)) # run the query and get list of emails
+mails = gmail.get_messages(query=construct_query(query_params)) # run the query and get list of emails
 
-for message in messages:
+for message in mails:
     safe_filename = re.sub(r'[<>:"/\\|?*]', '_', message.subject + message.date) # change the file name to a safe name so you cna save it on your pc
     file_path = invoices_folder + '\\' + safe_filename + '.pdf' # set the new pdf name
     if os.path.exists(file_path): # checks if the pdf name already exists in the directory, if not continue
