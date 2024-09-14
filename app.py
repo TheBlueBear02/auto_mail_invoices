@@ -15,8 +15,7 @@ import pdfplumber
 import openai
 from datetime import datetime
 from googleapiclient.discovery import build
-
-
+from google.oauth2 import service_account
 
 # Function to select a folder and save its path to the config.json file
 def choose_folder():
@@ -86,12 +85,42 @@ def extract_invoice_details(invoice_text):
         print(f"Error during OpenAI API call: {str(e)}")
         return None
 
+def save_in_sheets(values):
+    # Define the scopes required
+    scopes = ['https://www.googleapis.com/auth/spreadsheets']
+
+    # Authenticate and create the service object
+    creds = service_account.Credentials.from_service_account_file(
+        SERVICE_ACCOUNT_FILE, scopes=scopes)
+    service = build('sheets', 'v4', credentials=creds)
+
+    # Define the ID of the Google Sheet and the range you want to update
+    SPREADSHEET_ID = '1iX-UxZhkscNm3pkDT-9m-RKB0dOKhiW_qiyqZ9ZO0wE'
+    RANGE_NAME = '2024!A2'
+
+    body = {
+        'values': values
+    }
+
+    # Write data to the sheet
+    service.spreadsheets().values().append(
+        spreadsheetId=SPREADSHEET_ID,
+        range=RANGE_NAME,
+        valueInputOption='RAW',
+        insertDataOption='INSERT_ROWS',
+        body=body
+    ).execute()     
+
 # Get Gmail credentials
 creds = get_gmail_credentials()
 gmail = Gmail()  # Pass the credentials to the Gmail class
 # Get openai api key
 with open(r'D:\Projects\auto_mail_invoices\openai_key.json', 'r') as openai_file:
         openai.api_key = json.load(openai_file)['key']
+
+# Load your credentials from the downloaded JSON file
+SERVICE_ACCOUNT_FILE = r'D:\Projects\auto_mail_invoices\service_account.json'
+
 
 # Determine the base path
 if getattr(sys, 'frozen', False):
@@ -148,9 +177,9 @@ for message in mails:
                     amount = extract_invoice_details(invoice_text) # Extract the details from the invoice
                     
                     # Data to append to Google Sheets
-                    data_to_append = [clear_date, message.sender, amount, file_path]
-                    print('Name: ' + message.sender)
-                    print('Amount: ' + amount)
+                    data_to_append = [[message.sender,'אימייל', amount,'חדש', clear_date, file_path]]
+                    save_in_sheets(data_to_append)
+                    print('Saved in Google Sheets!')
         
             elif message.html: # if the email doesn't contain attachments, save the mail content as pdf
                 html_content = message.html
