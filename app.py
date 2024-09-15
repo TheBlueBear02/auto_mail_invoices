@@ -11,6 +11,11 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from google.oauth2.credentials import Credentials
 import pickle
 from google.auth.transport.requests import Request
+import pdfplumber
+import openai
+from datetime import datetime
+from googleapiclient.discovery import build
+
 
 # Function to select a folder and save its path to the config.json file
 def choose_folder():
@@ -49,6 +54,39 @@ def get_gmail_credentials():
 
     return creds
 
+def extract_text_from_pdf(pdf_path): # get pdf file and return the file's text
+    with pdfplumber.open(pdf_path) as pdf:
+        full_text = ""
+        for page in pdf.pages:
+            full_text += page.extract_text()
+        return full_text
+
+def extract_invoice_details(invoice_text):
+    """
+    Function to extract company name and amount paid from the invoice text using OpenAI Chat API.
+    """
+    messages = [
+        {"role": "system", "content": "You are an assistant that extracts amount paid from each invoice the user paid."},
+        {"role": "system", "content": f"תוציא את סך הכל (סה''כ) הסכום ששולם בחשבונית."},
+        {"role": "user", "content": f"Extract only the bottom line of what paid from this invoice. The text may be in English or Hebrew (return only the amouint paid in numbers or if you not sure return None):\n\n{invoice_text}"}
+    ]
+
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",  # You can also use "gpt-4" for more accurate results
+            messages=messages,
+            max_tokens=150,
+            temperature=0.1,
+        )
+        
+        return response['choices'][0]['message']['content'].strip()
+
+    except Exception as e:
+        print(f"Error during OpenAI API call: {str(e)}")
+        return None
+
+
+
 # Determine the base path
 if getattr(sys, 'frozen', False):
     # Running as a PyInstaller bundle
@@ -74,17 +112,32 @@ else:
 # Get Gmail credentials
 creds = get_gmail_credentials()
 gmail = Gmail()  # Pass the credentials to the Gmail class
+# Get openai api key
+openai.api_key = "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"
+# Connect to Google Sheets
+
+# Google Sheets API setup
+SHEET_ID = 'your-google-sheet-id'  # Your Google Sheets ID
+RANGE_NAME = 'Sheet1!A1:D1'  # The range to write data to (adjust as needed)
 
 query_params = { # select the list of email you want to get from the Gmail inbox
-    "newer_than": (7, "day"),
+    "newer_than": (31, "day"),
     #"unread": False,
 }
 
 mails = gmail.get_messages(query=construct_query(query_params)) # run the query and get list of emails
 
 for message in mails:
-    safe_filename = re.sub(r'[<>:"/\\|?*]', '_', message.subject + message.date) # change the file name to a safe name so you can save it on your pc
+    # Changing the date format to be more clear
+    date_string = message.date.split()[0]
+    date_obj = datetime.strptime(date_string, '%Y-%m-%d')
+    clear_date = date_obj.strftime('%d-%m-%Y')
+    clear_time = ":".join(message.date.split()[1].split(":")[:2])
+    clear_time_date = re.sub(r'[<>:"/\\|?*]', '-', clear_date + '_' + clear_time)
+    safe_filename = re.sub(r'[<>:"/\\|?*]', '_', message.subject + '_' + clear_time_date) # change the file name to a safe name so you can save it on your pc
+    
     file_path = invoices_folder + '\\' + safe_filename + '.pdf' # set the new pdf name
+    
     if os.path.exists(file_path): # checks if the pdf name already exists in the directory, if not continue
         print('All invoices are saved!')
         break
@@ -94,17 +147,29 @@ for message in mails:
                 for attm in message.attachments:
                     attm.save(filepath=file_path) # save the file
                     print('Saved attachment of : ' + safe_filename)
+                    invoice_text = extract_text_from_pdf(file_path) # Gets the text of the pdf
+                    amount = extract_invoice_details(invoice_text) # Extract the details from the invoice
+                    
+                    # Data to append to Google Sheets
+                    data_to_append = [clear_date, message.sender, amount, file_path]
+                    print(message.sender)
+
         
             elif message.html: # if the email doesn't contain attachments, save the mail content as pdf
                 html_content = message.html
-                pdf_file_name = message.subject + message.date # Specify the name of the PDF file
-
                 try:
                     HTML(string=html_content).write_pdf(file_path, optimize_size=False)# Convert the HTML content to PDF and save it
                     print('Saved: ' + safe_filename + " content as pdf")
+                    invoice_text = extract_text_from_pdf(file_path)
+                    amount = extract_invoice_details(invoice_text) # Extract the details from the invoice
+                    print(message.sender)
+                    print(amount)
+
                 except Exception:
                     print('Cannot save this mail as html: ' + safe_filename)
                 else:
                     continue
         else:
             continue
+
+input("Click Enter to exit")
